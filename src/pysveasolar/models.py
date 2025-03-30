@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional
 
 
 @dataclass
@@ -25,10 +25,17 @@ class Battery:
     battery_id: str
     name: str
     status: str
-    state_of_charge: float
+    state_of_charge: Optional[float]
     image_url: Optional[str]
 
-    def __init__(self, battery_id: str, name: str, status: str, state_of_charge: Optional[float], image_url: Optional[str]):
+    def __init__(
+        self,
+        battery_id: str,
+        name: str,
+        status: str,
+        state_of_charge: Optional[float],
+        image_url: Optional[str],
+    ):
         self.battery_id = battery_id
         self.name = name
         self.status = status
@@ -43,7 +50,14 @@ class Ev:
     range_in_km: float
     image_url: Optional[str]
 
-    def __init__(self, ev_id: str, name: str, status: str, range_in_km: int, image_url: Optional[str]):
+    def __init__(
+        self,
+        ev_id: str,
+        name: str,
+        status: str,
+        range_in_km: int,
+        image_url: Optional[str],
+    ):
         self.ev_id = ev_id
         self.name = name
         self.status = status
@@ -83,8 +97,13 @@ class BadgesUpdatedData:
         if ev is None:
             return None
 
-        return Ev(ev_id=ev.id, name=ev.title, status=ev.status,
-                  range_in_km=ev.subtitle['value'], image_url=ev.imageUrl)
+        return Ev(
+            ev_id=ev.id,
+            name=ev.title,
+            status=ev.status,
+            range_in_km=ev.subtitle["value"],
+            image_url=ev.imageUrl,
+        )
 
     @property
     def battery(self) -> Optional[Battery]:
@@ -95,12 +114,22 @@ class BadgesUpdatedData:
         if battery is None:
             return None
 
-        if battery.subtitle['key'] == "stateOfCharge":
-            return Battery(battery_id=battery.id, name=battery.title, status=battery.status,
-                           state_of_charge=battery.subtitle['value'], image_url=battery.imageUrl)
+        if battery.subtitle["key"] == "stateOfCharge":
+            return Battery(
+                battery_id=battery.id,
+                name=battery.title,
+                status=battery.status,
+                state_of_charge=battery.subtitle["value"],
+                image_url=battery.imageUrl,
+            )
 
-        return Battery(battery_id=battery.id, name=battery.title, status=battery.status,
-                       state_of_charge=None, image_url=battery.imageUrl)
+        return Battery(
+            battery_id=battery.id,
+            name=battery.title,
+            status=battery.status,
+            state_of_charge=None,
+            image_url=battery.imageUrl,
+        )
 
 
 @dataclass

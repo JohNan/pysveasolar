@@ -7,7 +7,7 @@ import aiohttp
 import certifi
 
 from pysveasolar.api import SveaSolarAPI
-from pysveasolar.models import BadgesUpdatedMessage, KeepAliveMessage, VehicleDetailsUpdatedMessage
+from pysveasolar.models import BadgesUpdatedMessage
 from pysveasolar.token_managers.filesystem import TokenManagerFileSystem
 
 logging.basicConfig(level=logging.DEBUG)
@@ -48,9 +48,7 @@ async def main():
     websocket_subparser.add_parser("home")
     ev_websocket = websocket_subparser.add_parser("ev")
     ev_websocket_argument = ev_websocket.add_argument_group("required arguments")
-    ev_websocket_argument.add_argument(
-        "-id", dest="ev_id", help="EV Id", required=True
-    )
+    ev_websocket_argument.add_argument("-id", dest="ev_id", help="EV Id", required=True)
 
     args = parser.parse_args()
 
@@ -105,24 +103,24 @@ async def main():
             if args.function == "home":
 
                 def on_connected():
-                    print(f"Connected")
+                    print("Connected")
 
                 def on_json_data(msg):
                     print(f"Json data received: {msg}")
 
                 def battery_message_handler(msg: BadgesUpdatedMessage):
                     print(f"BadgeUpdate: {msg}")
-                    if msg.data.has_battery:
+                    if msg.data.has_battery and msg.data.battery is not None:
                         print(f"Battery name: {msg.data.battery.name}")
                         print(f"Battery status: {msg.data.battery.status}")
                         print(f"Battery SoC: {msg.data.battery.state_of_charge}")
-                    if msg.data.has_ev:
+                    if msg.data.has_ev and msg.data.ev is not None:
                         print(f"EV status: {msg.data.ev.status}")
 
                 await hub.async_home_websocket(
                     data_callback=battery_message_handler,
                     connected_callback=on_connected,
-                    json_data_callback=on_json_data
+                    json_data_callback=on_json_data,
                 )
                 return
             if args.function == "ev":
@@ -130,7 +128,9 @@ async def main():
                 def ev_message_handler(msg):
                     print(f"VehicleDetailsUpdated: {msg}")
                     print(f"EV name: {msg.data.name}")
-                    print(f"EV charging status: {msg.data.vehicleStatus.chargingStatus}")
+                    print(
+                        f"EV charging status: {msg.data.vehicleStatus.chargingStatus}"
+                    )
                     print(f"EV battery status: {msg.data.vehicleStatus.batteryLevel}")
 
                 await hub.async_ev_websocket(args.ev_id, ev_message_handler)

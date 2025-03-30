@@ -11,10 +11,10 @@ class Auth:
     """Class to make authenticated requests."""
 
     def __init__(
-            self,
-            session: ClientSession,
-            host: str,
-            async_get_access_token: Callable,
+        self,
+        session: ClientSession,
+        host: str,
+        async_get_access_token: Callable,
     ):
         """Initialize the auth."""
         self.session = session
@@ -45,9 +45,7 @@ class Auth:
 
     async def connect_to_websocket(self, uri, connected_callback=None):
         access_token = await self.async_get_access_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}"
-        }
+        headers = {"Authorization": f"Bearer {access_token}"}
 
         session = aiohttp.ClientSession()
         websocket = await session.ws_connect(uri, headers=headers)

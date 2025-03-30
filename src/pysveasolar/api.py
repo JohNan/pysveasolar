@@ -1,14 +1,19 @@
 import logging
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import List, Callable
+from typing import Callable, List
 
-from aiohttp import ClientSession, ClientError
+from aiohttp import ClientError, ClientSession
 from dataclass_wizard import fromdict
 
 from pysveasolar.auth import Auth
-from pysveasolar.models import BadgesUpdatedMessage, KeepAliveMessage, VehicleDetailsUpdatedMessage, Location, \
-    BatteryDetailsData, BadgesUpdatedData, Badge
+from pysveasolar.models import (
+    BadgesUpdatedMessage,
+    BatteryDetailsData,
+    KeepAliveMessage,
+    Location,
+    VehicleDetailsUpdatedMessage,
+)
 from pysveasolar.token_manager import TokenManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +39,7 @@ class SveaSolarAPI:
                 "post",
                 "v1/auth/login-with-email",
                 json={"email": username, "password": password},
-                skip_auth_headers=True
+                skip_auth_headers=True,
             )
             response.raise_for_status()
         except Exception as e:
@@ -95,8 +100,10 @@ class SveaSolarAPI:
         today = datetime.today()
         start_of_week = today - timedelta(days=today.weekday())
         end_of_week = today + timedelta(days=7)
-        resp = await self.auth.request("get",
-                                       f"v2/dashboard/performance/details/location/{location_id}?fromDate={self.format_date(start_of_week)}&toDate={self.format_date(end_of_week)}&resolution=DAY")
+        resp = await self.auth.request(
+            "get",
+            f"v2/dashboard/performance/details/location/{location_id}?fromDate={self.format_date(start_of_week)}&toDate={self.format_date(end_of_week)}&resolution=DAY",
+        )
         resp.raise_for_status()
         return await resp.json()
 
@@ -104,12 +111,19 @@ class SveaSolarAPI:
         resp = await self.auth.request("get", f"v1/battery/{battery_id}/details")
         resp.raise_for_status()
         data = await resp.json()
-        return fromdict(BatteryDetailsData,data)
+        return fromdict(BatteryDetailsData, data)
 
-    async def async_home_websocket(self, data_callback: Callable[[BadgesUpdatedMessage], None], connected_callback=None, json_data_callback=None,
-                                   keep_alive_callback=None):
+    async def async_home_websocket(
+        self,
+        data_callback: Callable[[BadgesUpdatedMessage], None],
+        connected_callback=None,
+        json_data_callback=None,
+        keep_alive_callback=None,
+    ):
         uri = "wss://prod.app.sveasolar.com/api/v1/ws/home"
-        async with await self.auth.connect_to_websocket(uri, connected_callback) as websocket:
+        async with await self.auth.connect_to_websocket(
+            uri, connected_callback
+        ) as websocket:
             async for message in websocket:
                 try:
                     if json_data_callback is not None:
@@ -127,10 +141,18 @@ class SveaSolarAPI:
                 except Exception as e:
                     _LOGGER.error(f"Failed to parse message: {e} - {message.data}")
 
-    async def async_ev_websocket(self, ev_id: str, data_callback: Callable[[VehicleDetailsUpdatedMessage], None], connected_callback=None, json_data_callback=None,
-                                 keep_alive_callback=None):
+    async def async_ev_websocket(
+        self,
+        ev_id: str,
+        data_callback: Callable[[VehicleDetailsUpdatedMessage], None],
+        connected_callback=None,
+        json_data_callback=None,
+        keep_alive_callback=None,
+    ):
         uri = f"wss://prod.app.sveasolar.com/api/v1/ws/electric-vehicle/{ev_id}"
-        async with await self.auth.connect_to_websocket(uri, connected_callback) as websocket:
+        async with await self.auth.connect_to_websocket(
+            uri, connected_callback
+        ) as websocket:
             async for message in websocket:
                 try:
                     if json_data_callback is not None:
