@@ -3,10 +3,16 @@ import urllib.parse
 from datetime import datetime, timedelta
 from typing import Callable, List
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientError, ClientSession, WSMsgType
 from dataclass_wizard import fromdict
 
 from pysveasolar.auth import Auth
+from pysveasolar.errors import (
+    CannotConnectError,
+    ConnectionClosedError,
+    ConnectionFailedError,
+    InvalidMessageError,
+)
 from pysveasolar.models import (
     BadgesUpdatedMessage,
     BatteryDetailsData,
@@ -26,6 +32,10 @@ class SveaSolarAPI:
         """Initialize the API and store the auth so we can make requests."""
         self.token_manager = token_manager
         self.session = session
+        self._home_websocket: ClientSession | None = None
+        self._home_websocket_connected = False
+        self._ev_websockets: dict[str, ClientSession] = {}
+        self._ev_websockets_connected: dict[str, bool] = {}
 
         self.auth = Auth(
             session,
@@ -102,7 +112,7 @@ class SveaSolarAPI:
         end_of_week = today + timedelta(days=7)
         resp = await self.auth.request(
             "get",
-            f"v2/dashboard/performance/details/location/{location_id}?fromDate={self.format_date(start_of_week)}&toDate={self.format_date(end_of_week)}&resolution=DAY",
+            f"v2/dashboard/performance/details/location/{location_id}?fromDate={self._format_date(start_of_week)}&toDate={self._format_date(end_of_week)}&resolution=DAY",
         )
         resp.raise_for_status()
         return await resp.json()
@@ -113,6 +123,30 @@ class SveaSolarAPI:
         data = await resp.json()
         return fromdict(BatteryDetailsData, data)
 
+    async def async_home_websocket_disconnect(self) -> None:
+        """Disconnect from the websocket server."""
+        if not self._home_websocket_connected:
+            return
+
+        if self._home_websocket is None:
+            _LOGGER.warning("Home websocket is None")
+            return
+
+        self._home_websocket_connected = False
+        await self._home_websocket.close()
+
+        _LOGGER.info("Disconnected from websocket server")
+
+    async def async_ev_websocket_disconnect(self, ev_id: str) -> None:
+        """Disconnect from the websocket server."""
+        if ev_id not in self._ev_websockets_connected.keys():
+            return
+
+        self._ev_websockets_connected[ev_id] = False
+        await self._ev_websockets[ev_id].close()
+
+        _LOGGER.info("Disconnected from websocket server")
+
     async def async_home_websocket(
         self,
         data_callback: Callable[[BadgesUpdatedMessage], None],
@@ -121,25 +155,34 @@ class SveaSolarAPI:
         keep_alive_callback=None,
     ):
         uri = "wss://prod.app.sveasolar.com/api/v1/ws/home"
-        async with await self.auth.connect_to_websocket(
-            uri, connected_callback
-        ) as websocket:
-            async for message in websocket:
-                try:
-                    if json_data_callback is not None:
-                        json_data_callback(message.data)
+        try:
+            async with await self.auth.connect_to_websocket(
+                uri, connected_callback
+            ) as websocket:
+                self._home_websocket = websocket
+                self._home_websocket_connected = True
+                async for message in websocket:
+                    self._handle_websocket_message_type(message)
 
-                    data = message.json()
-                    if data["type"] == "BadgesUpdated":
-                        data_callback(fromdict(BadgesUpdatedMessage, data))
-                    elif data["type"] == "KeepAlive":
-                        if keep_alive_callback is not None:
-                            keep_alive_callback(fromdict(KeepAliveMessage, data))
-                    else:
-                        _LOGGER.warning(f"Unknown message type: {data['type']}")
-                        continue
-                except Exception as e:
-                    _LOGGER.error(f"Failed to parse message: {e} - {message.data}")
+                    try:
+                        if json_data_callback is not None:
+                            json_data_callback(message.data)
+
+                        data = message.json()
+                        if data["type"] == "BadgesUpdated":
+                            data_callback(fromdict(BadgesUpdatedMessage, data))
+                        elif data["type"] == "KeepAlive":
+                            if keep_alive_callback is not None:
+                                keep_alive_callback(fromdict(KeepAliveMessage, data))
+                        else:
+                            _LOGGER.warning(f"Unknown message type: {data['type']}")
+                            continue
+                    except Exception as e:
+                        _LOGGER.error(f"Failed to parse message: {e} - {message.data}")
+        except ClientError as err:
+            raise CannotConnectError(err) from err
+        except Exception as err:
+            raise ConnectionFailedError(err) from err
 
     async def async_ev_websocket(
         self,
@@ -150,27 +193,44 @@ class SveaSolarAPI:
         keep_alive_callback=None,
     ):
         uri = f"wss://prod.app.sveasolar.com/api/v1/ws/electric-vehicle/{ev_id}"
-        async with await self.auth.connect_to_websocket(
-            uri, connected_callback
-        ) as websocket:
-            async for message in websocket:
-                try:
-                    if json_data_callback is not None:
-                        json_data_callback(message.data)
+        try:
+            async with await self.auth.connect_to_websocket(
+                uri, connected_callback
+            ) as websocket:
+                self._ev_websockets[ev_id] = websocket
+                self._ev_websockets_connected[ev_id] = True
+                async for message in websocket:
+                    self._handle_websocket_message_type(message)
+                    try:
+                        if json_data_callback is not None:
+                            json_data_callback(message.data)
 
-                    data = message.json()
-                    if data["type"] == "VehicleDetailsUpdated":
-                        data_callback(fromdict(VehicleDetailsUpdatedMessage, data))
-                    elif data["type"] == "KeepAlive":
-                        if keep_alive_callback is not None:
-                            keep_alive_callback(fromdict(KeepAliveMessage, data))
-                    else:
-                        _LOGGER.warning(f"Unknown message type: {data['type']}")
-                        continue
-                except Exception as e:
-                    _LOGGER.error(f"Failed to parse message: {e} - {message.data}")
+                        data = message.json()
+                        if data["type"] == "VehicleDetailsUpdated":
+                            data_callback(fromdict(VehicleDetailsUpdatedMessage, data))
+                        elif data["type"] == "KeepAlive":
+                            if keep_alive_callback is not None:
+                                keep_alive_callback(fromdict(KeepAliveMessage, data))
+                        else:
+                            _LOGGER.warning(f"Unknown message type: {data['type']}")
+                            continue
+                    except Exception as e:
+                        _LOGGER.error(f"Failed to parse message: {e} - {message.data}")
+        except ClientError as err:
+            raise CannotConnectError(err) from err
+        except Exception as err:
+            raise ConnectionFailedError(err) from err
 
     @staticmethod
-    def format_date(dt):
+    def _format_date(dt):
         iso_format = dt.strftime("%Y-%m-%dT%H:%M:%SZ")  # ISO 8601-format
         return urllib.parse.quote(iso_format)
+
+    @staticmethod
+    def _handle_websocket_message_type(message):
+        if message.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.CLOSING):
+            raise ConnectionClosedError("Connection was closed.")
+        if message.type == WSMsgType.ERROR:
+            raise ConnectionFailedError
+        if message.type != WSMsgType.TEXT:
+            raise InvalidMessageError(f"Received non-text message: {message.type}")

@@ -1,7 +1,6 @@
 import logging
 from typing import Callable
 
-import aiohttp
 from aiohttp import ClientResponse, ClientSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,8 +46,7 @@ class Auth:
         access_token = await self.async_get_access_token()
         headers = {"Authorization": f"Bearer {access_token}"}
 
-        session = aiohttp.ClientSession()
-        websocket = await session.ws_connect(uri, headers=headers)
+        websocket = await self.session.ws_connect(uri, headers=headers, heartbeat=55)
         _LOGGER.debug(f"Connected to the WebSocket at {uri}")
         if connected_callback is not None:
             connected_callback()

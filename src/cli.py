@@ -102,6 +102,9 @@ async def main():
         if args.cmd == "ws":
             if args.function == "home":
 
+                def on_keep_alive(msg):
+                    print(f"Keep Alive from Home WS: {msg}")
+
                 def on_connected():
                     print("Connected")
 
@@ -121,6 +124,7 @@ async def main():
                     data_callback=battery_message_handler,
                     connected_callback=on_connected,
                     json_data_callback=on_json_data,
+                    keep_alive_callback=on_keep_alive,
                 )
                 return
             if args.function == "ev":
