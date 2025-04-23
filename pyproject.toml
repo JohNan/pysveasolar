@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pysveasolar"
-version = "0.1.1"
+version = "0.1.2"
 description = ""
 authors = ["Johan Nenzén <johan.nanzen@gmail.com>"]
 readme = "README.md"

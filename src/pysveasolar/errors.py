@@ -4,6 +4,18 @@ class SveaSolarError(Exception):
     pass
 
 
+class HttpError(SveaSolarError):
+    """An error related to generic websocket errors."""
+
+    pass
+
+
+class AuthenticationError(HttpError):
+    """An error related to authentication."""
+
+    pass
+
+
 class WebsocketError(SveaSolarError):
     """An error related to generic websocket errors."""
 
