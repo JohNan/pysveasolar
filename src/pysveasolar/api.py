@@ -8,6 +8,7 @@ from dataclass_wizard import fromdict
 
 from pysveasolar.auth import Auth
 from pysveasolar.errors import (
+    AuthenticationError,
     CannotConnectError,
     ConnectionClosedError,
     ConnectionFailedError,
@@ -75,7 +76,7 @@ class SveaSolarAPI:
 
             response.raise_for_status()
         except Exception as e:
-            raise ValueError(f"Failed to get access token: {e}")
+            raise AuthenticationError("Failed to login to Svea Solar") from e
 
         data = await response.json()
         self.token_manager.update(data["accessToken"], self.token_manager.refresh_token)
