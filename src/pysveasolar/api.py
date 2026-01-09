@@ -37,6 +37,8 @@ class SveaSolarAPI:
         self._home_websocket_connected = False
         self._ev_websockets: dict[str, ClientSession] = {}
         self._ev_websockets_connected: dict[str, bool] = {}
+        self._username: str | None = None
+        self._password: str | None = None
 
         self.auth = Auth(
             session,
@@ -45,6 +47,9 @@ class SveaSolarAPI:
         )
 
     async def async_login(self, username: str, password: str):
+        self._username = username
+        self._password = password
+
         try:
             response = await self.auth.request(
                 "post",
@@ -62,21 +67,35 @@ class SveaSolarAPI:
         _LOGGER.info("Successfully logged in to Svea Solar")
 
     async def async_get_access_token(self) -> str:
+        """Return the access token."""
         if self.token_manager.is_token_valid():
             return self.token_manager.access_token
 
+        _LOGGER.debug("Refreshing access token")
         try:
-            _LOGGER.debug("Refreshing access token")
             response = await self.auth.request(
                 "post",
                 "v1/auth/refresh-access-token",
                 json={"refreshToken": self.token_manager.refresh_token},
                 skip_auth_headers=True,
             )
-
             response.raise_for_status()
         except Exception as e:
-            raise AuthenticationError("Failed to login to Svea Solar") from e
+            _LOGGER.debug("Failed to refresh access token, trying to login again")
+
+            if self._username is None or self._password is None:
+                raise AuthenticationError(
+                    "Svea Solar token refresh failed and no credentials saved."
+                ) from e
+
+            try:
+                await self.async_login(self._username, self._password)
+            except ClientError as login_error:
+                raise AuthenticationError(
+                    "Failed to re-authenticate with Svea Solar"
+                ) from login_error
+
+            return self.token_manager.access_token
 
         data = await response.json()
         self.token_manager.update(data["accessToken"], self.token_manager.refresh_token)
